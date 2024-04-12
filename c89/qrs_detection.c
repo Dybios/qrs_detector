@@ -2,6 +2,7 @@
 #include "filter.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h> // Not needed for c89; This is a project specific modification.
 
 #define WINDOW_SEC (0.160)
 #define MIN_RR_SEC (0.200)
@@ -27,7 +28,7 @@ int DetectQrsPeaks(double const* signal, int size, char* result, double rate)
     const int WINDOW_SIZE = (int)(WINDOW_SEC * rate);
     const int MIN_RR = (int)(MIN_RR_SEC * rate);
     const int MAX_RR = (int)(MAX_RR_SEC * rate);
-    int count, delay;
+    int r_width_avg, delay;
     double *buffer;  // filtered signal, integrated signal
     double *derivative;
 
@@ -43,10 +44,10 @@ int DetectQrsPeaks(double const* signal, int size, char* result, double rate)
     WindowIntegration(derivative, size, buffer, WINDOW_SIZE);
     delay += WINDOW_SIZE / 2;
     free(derivative);
-    count = Thresholding(buffer, size, MIN_RR, MAX_RR, result);
+    r_width_avg = Thresholding(buffer, size, MIN_RR, MAX_RR, result);
     free(buffer);
     SubtractDelay(result, size, delay);
-    return count;
+    return r_width_avg;
 }
 
 /*****************************************************************************/
@@ -163,6 +164,8 @@ int Thresholding(const double* integrated, int size, int min_rr_width, int max_r
     int i, count, previous, searchback, searchback_end;
     double spki, npki, threshold1, threshold2;
 
+    int r_width = 0;
+
     spki = npki = 0.0;
     count = 0;
     threshold1 = 0.0;
@@ -202,6 +205,13 @@ int Thresholding(const double* integrated, int size, int min_rr_width, int max_r
             if (count == 0 || i - previous >= min_rr_width) {
                 result[i] = MARK_QRS;
                 ++count;
+                if (r_width == 0) {
+                    r_width = i;
+                }
+                else {
+                    r_width = i - r_width;
+                    r_width = r_width/count;
+                }
             } else if (integrated[previous] < peaki) {
                 result[previous] = MARK_NO_QRS;
                 result[i] = MARK_QRS;
@@ -214,7 +224,7 @@ int Thresholding(const double* integrated, int size, int min_rr_width, int max_r
         threshold2 = 0.5 * threshold1;
         ++i;
     }
-    return count;
+    return r_width;
 }
 
 void Normalize(double* values, int size)
